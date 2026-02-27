@@ -73,14 +73,23 @@ def submit_and_monitor(qsub_args: list, config: ConfigurationLoader) -> None:
     # Step 4: Start background monitor process
     print(f"Starting background monitor for job {job_id}...")
     try:
+        # Step 4.1: Use nohup to ensure process continues after terminal closes
+        nohup_cmd = [
+            'nohup',
+            sys.executable,
+            'monitor.py',
+            job_id,
+            config.config_path
+        ]
         subprocess.Popen(
-            [sys.executable, 'monitor.py', job_id, config.config_path],
-            start_new_session=True,
-            stdin=subprocess.DEVNULL,
+            nohup_cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True
         )
         print(f"Monitor started. You will receive an email when job {job_id} completes.")
+        print("Monitor will continue running even if you close this terminal.")
     except Exception as e:
         print(f"Warning: Failed to start monitor: {e}", file=sys.stderr)
         print("Job was submitted but monitoring is not active.")
