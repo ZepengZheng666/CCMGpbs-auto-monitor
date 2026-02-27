@@ -43,21 +43,29 @@ class JobMonitor:
         """
         # Step 1: Verify job is in queue before monitoring
         job_name, initial_status = self._get_job_status(job_id)
-        if initial_status is None:
+        job_enqueued = initial_status is not None
+
+        # Step 2: If job was never found in queue, exit early
+        if not job_enqueued:
             print(f"Job {job_id} not found in queue, exiting monitor.")
             return
 
+        # Step 3: Start monitoring loop
+        print(f"Monitoring job {job_id}...")
         while True:
-            # Step 2: Periodically check job status
+            # Step 4: Periodically check job status
             job_name, status = self._get_job_status(job_id)
 
-            # Step 3: Check if job is completed (status C or not found)
-            if status == 'C' or status is None:
+            # Step 5: Check completion conditions:
+            # - Job status is 'C' (Completed)
+            # - Job was enqueued and now cannot be found (removed from queue)
+            if status == 'C' or (job_enqueued and status is None):
                 exit_status = self._get_exit_status(job_id)
                 self._send_notification(job_id, job_name, exit_status)
                 break
 
-            # Step 4: Wait for next polling interval
+            # Step 6: Job is pending/running, continue monitoring
+            # Step 7: Wait for next polling interval
             time.sleep(self.config.poll_interval)
 
     def _get_job_status(self, job_id: str) -> Tuple[Optional[str], Optional[str]]:
