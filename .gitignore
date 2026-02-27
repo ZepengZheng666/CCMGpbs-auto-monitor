@@ -1,0 +1,17 @@
+# Configuration files (keep example)
+config.json
+*.json.example
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary files
+*.sh
+*.levo2
+nohup.out
