@@ -8,6 +8,11 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
 from datetime import datetime
+from logger import LoggerConfig
+
+
+# Step 1: Initialize logger for notifier module
+logger = LoggerConfig.setup("notifier")
 
 
 class EmailNotifier:
@@ -47,6 +52,8 @@ class EmailNotifier:
         Returns:
             True if the email was sent successfully, False otherwise.
         """
+        logger.info(f"Preparing email notification for job {job_id} to {recipient_email}")
+
         # Step 1: Create email message
         message = self._create_message(
             recipient_email, job_id, job_name, exit_status
@@ -54,9 +61,11 @@ class EmailNotifier:
 
         # Step 2: Send the email via SMTP
         try:
-            return self._send_email(message, recipient_email)
+            result = self._send_email(message, recipient_email)
+            logger.info(f"Email notification sent successfully for job {job_id}")
+            return result
         except Exception as e:
-            print(f"Failed to send email: {e}")
+            logger.error(f"Failed to send email notification for job {job_id}: {e}")
             return False
 
     def _create_message(self, recipient_email: str, job_id: str,
@@ -110,14 +119,19 @@ class EmailNotifier:
             smtplib.SMTPException: If SMTP communication fails.
         """
         # Step 1: Connect to SMTP server
+        logger.debug(f"Connecting to SMTP server: {self.smtp_server}:{self.smtp_port}")
         with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
             # Step 2: Start TLS if available
+            logger.debug("Starting TLS")
             server.starttls()
 
             # Step 3: Login with credentials
+            logger.debug(f"Logging in as {self.smtp_user}")
             server.login(self.smtp_user, self.smtp_password)
 
             # Step 4: Send the email
+            logger.debug(f"Sending email to {recipient_email}")
             server.send_message(message)
+            logger.debug("Email sent successfully")
 
         return True

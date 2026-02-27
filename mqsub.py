@@ -7,6 +7,11 @@ for the submitted job.
 import subprocess
 import sys
 from config_loader import ConfigurationLoader
+from logger import LoggerConfig
+
+
+# Step 1: Initialize logger
+logger = LoggerConfig.setup("mqsub")
 
 
 def parse_job_id(qsub_output: str) -> str:
@@ -43,6 +48,7 @@ def submit_and_monitor(qsub_args: list, config: ConfigurationLoader) -> None:
     """
     # Step 1: Build qsub command with all arguments
     qsub_cmd = ['qsub'] + qsub_args
+    logger.info(f"Starting job submission with command: {' '.join(qsub_cmd)}")
 
     print(f"Submitting job with command: {' '.join(qsub_cmd)}")
     print("Note: If PBS requires authentication, you may be prompted for a password below.")
@@ -57,23 +63,29 @@ def submit_and_monitor(qsub_args: list, config: ConfigurationLoader) -> None:
             text=True,
             check=True
         )
+        logger.info(f"qsub command executed successfully")
     except subprocess.CalledProcessError as e:
+        logger.error(f"qsub submission failed: {e.stderr}")
         print(f"qsub submission failed: {e.stderr}", file=sys.stderr)
         sys.exit(1)
     except FileNotFoundError:
+        logger.error("qsub command not found. PBS/Torque may not be installed.")
         print("Error: qsub command not found. PBS/Torque may not be installed.", file=sys.stderr)
         sys.exit(1)
 
     # Step 3: Parse Job ID from qsub output
     try:
         job_id = parse_job_id(result.stdout)
+        logger.info(f"Job ID parsed successfully: {job_id}")
         print(f"Job submitted successfully. Job ID: {job_id}")
     except ValueError as e:
+        logger.error(f"Failed to parse Job ID: {e}. qsub output: {result.stdout}")
         print(f"Failed to parse Job ID: {e}", file=sys.stderr)
         print(f"qsub output: {result.stdout}")
         sys.exit(1)
 
     # Step 4: Start background monitor process
+    logger.info(f"Starting background monitor for job {job_id}")
     print(f"Starting background monitor for job {job_id}...")
     try:
         # Step 4.1: Use nohup to ensure process continues after terminal closes
@@ -91,9 +103,11 @@ def submit_and_monitor(qsub_args: list, config: ConfigurationLoader) -> None:
             stdin=subprocess.DEVNULL,
             start_new_session=True
         )
+        logger.info(f"Monitor process started successfully for job {job_id}")
         print(f"Monitor started. You will receive an email when job {job_id} completes.")
         print("Monitor will continue running even if you close this terminal.")
     except Exception as e:
+        logger.error(f"Failed to start monitor: {e}")
         print(f"Warning: Failed to start monitor: {e}", file=sys.stderr)
         print("Job was submitted but monitoring is not active.")
 
@@ -114,9 +128,11 @@ def main() -> None:
         if arg in ('-c', '--config'):
             # Step 2: Handle config argument
             if i + 1 >= len(sys.argv):
+                logger.error("--config argument requires a value")
                 print("Error: --config requires a value", file=sys.stderr)
                 sys.exit(1)
             config_path = sys.argv[i + 1]
+            logger.info(f"Using custom config path: {config_path}")
             i += 2
         elif arg == '--help' or arg == '-h':
             # Step 3: Handle help argument
@@ -139,15 +155,20 @@ def main() -> None:
 
     # Step 5: Validate that at least one argument was provided for qsub
     if not qsub_args:
+        logger.error("No script specified")
         print("Error: No script specified.", file=sys.stderr)
         print("Usage: mqsub <script> [qsub-options...]", file=sys.stderr)
         print("Run: mqsub --help for more information")
         sys.exit(1)
 
+    logger.info(f"Arguments parsed. qsub_args: {qsub_args}")
+
     # Step 6: Load configuration
     try:
         config = ConfigurationLoader(config_path)
+        logger.info(f"Configuration loaded successfully from {config_path}")
     except Exception as e:
+        logger.error(f"Configuration error: {e}")
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
 

@@ -9,6 +9,11 @@ import sys
 from typing import Optional, Tuple
 from config_loader import ConfigurationLoader
 from notifier import EmailNotifier
+from logger import LoggerConfig
+
+
+# Step 1: Initialize logger for monitor module
+logger = LoggerConfig.setup("monitor")
 
 
 class JobMonitor:
@@ -26,6 +31,7 @@ class JobMonitor:
         """
         # Step 1: Store configuration
         self.config = config
+        logger.info("JobMonitor initialized")
 
         # Step 2: Initialize email notifier
         self.notifier = EmailNotifier(
@@ -34,6 +40,7 @@ class JobMonitor:
             smtp_user=config.smtp_user,
             smtp_password=config.smtp_password
         )
+        logger.info("EmailNotifier initialized")
 
     def monitor_job(self, job_id: str) -> None:
         """Monitor a PBS job until completion and send notification.
@@ -41,27 +48,46 @@ class JobMonitor:
         Args:
             job_id: The PBS job ID to monitor.
         """
+        logger.info(f"Starting monitoring for job {job_id}")
+
         # Step 1: Verify job is in queue before monitoring
         job_name, initial_status = self._get_job_status(job_id)
         job_enqueued = initial_status is not None
 
+        if initial_status:
+            logger.info(f"Job found in queue: {job_id}, name={job_name}, status={initial_status}")
+
         # Step 2: If job was never found in queue, exit early
         if not job_enqueued:
-            print(f"Job {job_id} not found in queue, exiting monitor.")
+            logger.warning(f"Job {job_id} not found in queue, exiting monitor.")
             return
 
         # Step 3: Start monitoring loop
-        print(f"Monitoring job {job_id}...")
+        logger.info(f"Job enqueued, starting monitoring loop for job {job_id}")
+        logger.info(f"Monitoring job {job_id}...")
+        poll_count = 0
         while True:
+            poll_count += 1
             # Step 4: Periodically check job status
             job_name, status = self._get_job_status(job_id)
+
+            if status:
+                logger.debug(f"Poll #{poll_count}: Job {job_id} status={status}")
+            else:
+                logger.debug(f"Poll #{poll_count}: Job {job_id} not found in queue")
 
             # Step 5: Check completion conditions:
             # - Job status is 'C' (Completed)
             # - Job was enqueued and now cannot be found (removed from queue)
+            if status == 'C':
+                logger.info(f"Job {job_id} completed (status=C)")
+            elif job_enqueued and status is None:
+                logger.info(f"Job {job_id} removed from queue (completed)")
+
             if status == 'C' or (job_enqueued and status is None):
                 exit_status = self._get_exit_status(job_id)
                 self._send_notification(job_id, job_name, exit_status)
+                logger.info(f"Monitoring finished for job {job_id} after {poll_count} polls")
                 break
 
             # Step 6: Job is pending/running, continue monitoring
@@ -86,9 +112,12 @@ class JobMonitor:
                 text=True,
                 timeout=30
             )
+            logger.debug(f"qstat -f {job_id} executed")
         except subprocess.TimeoutExpired:
+            logger.warning(f"qstat command timed out for job {job_id}")
             return None, None
-        except Exception:
+        except Exception as e:
+            logger.error(f"qstat command failed for job {job_id}: {e}")
             return None, None
 
         # Step 2: Parse job status from output
@@ -146,7 +175,9 @@ class JobMonitor:
                 text=True,
                 timeout=30
             )
-        except Exception:
+            logger.debug(f"tracejob -n 1 {job_id} executed")
+        except Exception as e:
+            logger.warning(f"tracejob command failed for job {job_id}: {e}")
             return None
 
         # Step 2: Parse exit status from tracejob output
@@ -155,7 +186,10 @@ class JobMonitor:
                 if 'Exit_status' in line:
                     parts = line.strip().split()
                     if len(parts) >= 3:
-                        return parts[2]
+                        exit_status = parts[2]
+                        logger.info(f"Exit status for job {job_id}: {exit_status}")
+                        return exit_status
+        logger.debug(f"No exit status found for job {job_id}")
         return None
 
     def _send_notification(self, job_id: str, job_name: Optional[str],
@@ -167,6 +201,8 @@ class JobMonitor:
             job_name: The job name.
             exit_status: The exit status of the job.
         """
+        logger.info(f"Sending notification for job {job_id}, name={job_name}, exit_status={exit_status}")
+
         # Step 1: Send the email notification
         success = self.notifier.send_notification(
             recipient_email=self.config.recipient_email,
@@ -177,9 +213,9 @@ class JobMonitor:
 
         # Step 2: Log result
         if success:
-            print(f"Notification sent for job {job_id}")
+            logger.info(f"Notification sent successfully for job {job_id}")
         else:
-            print(f"Failed to send notification for job {job_id}")
+            logger.error(f"Failed to send notification for job {job_id}")
 
 
 def main(job_id: str, config_path: str = "config.json") -> None:
@@ -191,8 +227,15 @@ def main(job_id: str, config_path: str = "config.json") -> None:
         job_id: The PBS job ID to monitor.
         config_path: Path to the configuration file.
     """
+    logger.info(f"Monitor process started for job {job_id}, config={config_path}")
+
     # Step 1: Load configuration
-    config = ConfigurationLoader(config_path)
+    try:
+        config = ConfigurationLoader(config_path)
+        logger.info(f"Configuration loaded successfully from {config_path}")
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        sys.exit(1)
 
     # Step 2: Initialize and run monitor
     monitor = JobMonitor(config)
