@@ -45,12 +45,15 @@ def submit_and_monitor(qsub_args: list, config: ConfigurationLoader) -> None:
     qsub_cmd = ['qsub'] + qsub_args
 
     print(f"Submitting job with command: {' '.join(qsub_cmd)}")
+    print("Note: If PBS requires authentication, you may be prompted for a password below.")
 
-    # Step 2: Execute qsub command
+    # Step 2: Execute qsub command with stdin connected for password input
     try:
         result = subprocess.run(
             qsub_cmd,
-            capture_output=True,
+            stdin=None,  # Connect to parent stdin for password input
+            stdout=subprocess.PIPE,  # Capture stdout to parse Job ID
+            stderr=subprocess.PIPE,  # Capture stderr
             text=True,
             check=True
         )
